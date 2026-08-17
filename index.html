@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="團購統計">
 <meta name="theme-color" content="#241826">
 <title>團購統計</title>
@@ -19,9 +19,11 @@
 html,body{margin:0;padding:0}
 body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;
   padding-bottom:calc(96px + env(safe-area-inset-bottom))}
-.wrap{max-width:560px;margin:0 auto;padding:0 14px}
+.wrap{max-width:560px;margin:0 auto;
+  padding:0 calc(14px + env(safe-area-inset-right)) 0 calc(14px + env(safe-area-inset-left))}
 
-header{background:var(--ink);color:#F6F1F4;padding:16px 0 13px;border-bottom:3px solid var(--coral)}
+header{background:var(--ink);color:#F6F1F4;border-bottom:3px solid var(--coral);
+  padding:calc(16px + env(safe-area-inset-top)) 0 13px}
 .htop{display:flex;align-items:center;justify-content:space-between;gap:10px}
 h1{font-family:var(--serif);font-size:21px;font-weight:400;margin:0;letter-spacing:.16em}
 .ghost{background:transparent;color:#E9DDE4;border:1px solid #55404F;border-radius:999px;
@@ -218,7 +220,7 @@ function nid(){ return 'k' + (uid++); }
 function V(name, qty){ return {id:nid(), name:name, qty:qty}; }
 
 var groups = [
-  {id:'g1', name:'底妝系列', cat:'正貨', total:12, note:'A3–A6 共用配額', reserve:[{code:'A6', qty:1}]}
+  {id:'g1', name:'底妝系列', cat:'正貨', total:12, note:'A3–A7 共用配額', reserve:[{code:'A6', qty:1}]}
 ];
 
 var items = [
@@ -228,7 +230,9 @@ var items = [
   {id:nid(), cat:'正貨', code:'A4', name:'精華光粉餅', note:'色號自選', orig:2180, price:1350, gid:'g1', vars:[V('',0)]},
   {id:nid(), cat:'正貨', code:'A5', name:'輕蜜粉', note:'顏色自選', orig:1850, price:1150, gid:'g1', vars:[V('',0)]},
   {id:nid(), cat:'正貨', code:'A6', name:'粉底液', note:'色號自選', orig:2350, price:1450, gid:'g1', vars:[V('',0)]},
+  {id:nid(), cat:'正貨', code:'A7', name:'幻光蜜粉餅', note:'色號自選', orig:2300, price:1450, gid:'g1', vars:[V('',0)]},
   {id:nid(), cat:'正貨', code:'A8', name:'眉筆', note:'色號自選', orig:1100, price:770, gid:'', vars:[V('',3)]},
+  {id:nid(), cat:'正貨', code:'A9', name:'定妝噴霧', note:'款式自選', orig:1450, price:900, gid:'', vars:[V('',3)]},
 
   {id:nid(), cat:'小樣', code:'B1', name:'妝前乳', note:'', orig:0, price:200, gid:'', vars:[V('藍',1),V('紫',1),V('粉',1)]},
   {id:nid(), cat:'小樣', code:'B2', name:'彈嫩霜＋潔顏乳', note:'', orig:0, price:250, gid:'', vars:[V('',1)]},
