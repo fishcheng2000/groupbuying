@@ -105,8 +105,16 @@ nav{position:sticky;top:0;z-index:30;background:var(--paper);border-bottom:1px s
 .cline .l .memo{color:var(--muted);font-size:11px}
 .cline .r{font-family:var(--serif);color:var(--muted);white-space:nowrap}
 .custfoot{padding:9px 12px;border-top:1px solid var(--line);display:flex;gap:6px}
+.saveline{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);
+  padding:8px 12px 0;border-top:1px dashed var(--line);margin-top:2px}
+.saveline span:last-child{color:var(--coral)}
 .flag{font-size:11px;color:var(--coral);padding:0 12px 9px}
 
+.qc{background:var(--card);border:1px solid var(--line);border-radius:3px;margin:2px 0 10px}
+.qchead{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 10px 9px 12px;border-bottom:1px solid var(--line);font-size:13px;font-weight:600}
+.qctext{padding:11px 12px 13px;font-size:14px;line-height:2;white-space:pre-wrap;word-break:break-word;
+  -webkit-user-select:text;user-select:text}
 .trow{display:flex;gap:10px;padding:10px 12px;align-items:flex-start}
 .tn{flex:1;font-size:14px;font-weight:600;line-height:1.35}
 .tn span{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:3px;line-height:1.6}
@@ -192,7 +200,7 @@ textarea{min-height:96px;font-size:12px;font-family:ui-monospace,Menlo,monospace
     <button class="ghost" onclick="openBackup()">匯出／備份</button>
   </div>
   <div class="stats">
-    <div class="stat"><b id="s1">·</b><span>訂單</span></div>
+    <div class="stat"><b id="s1">·</b><span>客人</span></div>
     <div class="stat"><b id="s2">·</b><span>件數</span></div>
     <div class="stat"><b id="s3">·</b><span>總金額</span></div>
     <div class="stat"><b id="s4">·</b><span>剩餘</span></div>
@@ -335,6 +343,16 @@ function toast(msg){
   var t = $('#toast'); t.textContent = msg; t.classList.add('on');
   clearTimeout(t._h); t._h = setTimeout(function(){ t.classList.remove('on'); }, 2000);
 }
+function origOf(it){ return it.orig || it.price; }
+function totals(list){
+  var t = {orig:0, price:0, qty:0, save:0};
+  list.forEach(function(x){
+    var it = findItem(x.itemId); if(!it) return;
+    t.orig += origOf(it)*x.qty; t.price += it.price*x.qty; t.qty += x.qty;
+  });
+  t.save = t.orig - t.price;
+  return t;
+}
 function priceBox(it){
   if(!it.price) return '<span class="free">贈品</span>';
   return (it.orig ? '<span class="orig">'+money(it.orig)+'</span>' : '') + '<span class="now">'+money(it.price)+'</span>';
@@ -368,7 +386,9 @@ function totalLeft(){
 function render(){
   save();
   var amt = orders.reduce(function(s,o){ var it=findItem(o.itemId); return s + (it ? it.price*o.qty : 0); }, 0);
-  $('#s1').textContent = orders.length;
+  var uniq = [];
+  orders.forEach(function(o){ if(uniq.indexOf(o.who)<0) uniq.push(o.who); });
+  $('#s1').textContent = uniq.length;
   $('#s2').textContent = orders.reduce(function(s,o){ return s+o.qty; },0);
   $('#s3').textContent = amt.toLocaleString('en-US');
   $('#s4').textContent = totalLeft();
@@ -474,10 +494,10 @@ function renderCust(){
   var h = '<div class="grouphead"><div class="ghline"><h2>客人結算</h2><div class="rule"></div><span class="cnt">'+names.length+' 人</span></div></div>';
   names.forEach(function(n){
     var mine = orders.filter(function(o){ return o.who===n; });
-    var tot = 0, pcs = 0, hasA = false, hasB = false, gifts = 0;
+    var t = totals(mine);
+    var tot = t.price, pcs = t.qty, hasA = false, hasB = false, gifts = 0;
     mine.forEach(function(o){
       var it = findItem(o.itemId); if(!it) return;
-      tot += it.price*o.qty; pcs += o.qty;
       if(it.cat==='正貨') hasA = true;
       if(it.cat==='小樣') hasB = true;
       if(it.cat==='贈品') gifts += o.qty;
@@ -491,6 +511,8 @@ function renderCust(){
         '<div class="r">'+(it.price?money(it.price*o.qty):'贈品')+'</div></div>';
     });
     var warn = [];
+    if(t.save > 0) h += '<div class="saveline"><span>原價 '+money(t.orig)+'</span>'+
+      '<span>團購價 '+money(t.price)+'　省 '+money(t.save)+'</span></div>';
     if(hasA && !hasB) warn.push('沒有搭小樣');
     if(gifts>1) warn.push('贈品拿了 '+gifts+' 個');
     if(gifts>0 && !hasA) warn.push('沒買正貨卻有贈品');
@@ -788,13 +810,49 @@ function tallyRows(){
         });
         var n = soldVar(it.id, v.id);
         out.push({cat:cat.name, code:it.code, name:it.name+(v.name?'（'+v.name+'）':''),
-          note:it.note, qty:n, price:it.price, amt:it.price*n, who:who,
+          note:it.note, qty:n, price:it.price, amt:it.price*n,
+          orig:origOf(it), oamt:origOf(it)*n, who:who,
           cap:(it.gid ? null : v.qty), gname:(it.gid ? (findGroup(it.gid)||{}).name : '')});
       });
     });
   });
   return out;
 }
+/* 快速複製：一個品項一行，款式／色號各自累加
+   例：妝前乳 藍*2、紫*1　　眉筆 7號*2 */
+function quickLines(cat){
+  var out = [];
+  items.forEach(function(it){
+    if(cat && it.cat !== cat) return;
+    var map = {}, seq = [], total = 0;
+    orders.forEach(function(o){
+      if(o.itemId !== it.id) return;
+      var v = findVar(it, o.varId);
+      var label = (v && v.name) ? v.name : '';
+      if(o.memo) label = label ? (label+' '+o.memo) : o.memo;
+      if(!(label in map)){ map[label] = 0; seq.push(label); }
+      map[label] += o.qty;
+      total += o.qty;
+    });
+    if(!total) return;
+    if(seq.length === 1 && seq[0] === ''){ out.push(it.name+'*'+total); return; }
+    out.push(it.name+' '+seq.map(function(l){
+      return (l ? l : '未註明')+'*'+map[l];
+    }).join('、'));
+  });
+  return out;
+}
+function quickText(){
+  var blocks = [];
+  CATS.forEach(function(cat){
+    var lines = quickLines(cat.name);
+    if(!lines.length) return;
+    blocks.push('【'+cat.name+'】\n'+lines.join('\n'));
+  });
+  return blocks.join('\n\n');
+}
+function copyQuick(){ copy(quickText()); }
+
 function renderTally(){
   var all = tallyRows(), rows = all.filter(function(r){ return r.qty>0; });
   if(!rows.length){
@@ -803,36 +861,36 @@ function renderTally(){
   }
   var names = [];
   orders.forEach(function(o){ if(names.indexOf(o.who)<0) names.push(o.who); });
-  var pcs = orders.reduce(function(s,o){ return s+o.qty; },0);
-  var amt = orders.reduce(function(s,o){ var it=findItem(o.itemId); return s+(it?it.price*o.qty:0); },0);
+  var T = totals(orders);
 
   var h = '<div class="grouphead"><div class="ghline"><h2>訂購總表</h2><div class="rule"></div>'+
     '<span class="cnt">'+rows.length+' 個品項</span></div></div>'+
     '<div class="tsum">'+
-      '<div class="r"><span>訂購件數</span><b>'+pcs+' 件</b></div>'+
-      '<div class="r"><span>客人</span><b>'+names.length+' 人 · '+orders.length+' 筆</b></div>'+
-      '<div class="r"><span>應收總額</span><b>'+money(amt)+'</b></div>'+
+      '<div class="r"><span>客人</span><b>'+names.length+' 人</b></div>'+
+      '<div class="r"><span>訂購件數</span><b>'+T.qty+' 件</b></div>'+
+      '<div class="r"><span>原價總額</span><b style="color:#B39FAE">'+money(T.orig)+'</b></div>'+
+      '<div class="r"><span>團購價總額（應收）</span><b>'+money(T.price)+'</b></div>'+
+      '<div class="r"><span>共省下</span><b style="color:#F09AA6">'+money(T.save)+'</b></div>'+
     '</div>';
+
+  h += '<div class="qc"><div class="qchead">快速複製'+
+    '<button class="mini" onclick="copyQuick()">複製這段</button></div>'+
+    '<div class="qctext">'+esc(quickText())+'</div></div>';
 
   CATS.forEach(function(cat){
     var list = rows.filter(function(r){ return r.cat===cat.name; });
     if(!list.length) return;
-    var cp = 0, ca = 0;
-    list.forEach(function(r){ cp += r.qty; ca += r.amt; });
+    var cp = 0;
+    list.forEach(function(r){ cp += r.qty; });
     h += '<div class="grouphead"><div class="ghline"><h2>'+esc(cat.name)+'</h2><div class="rule"></div>'+
          '<span class="cnt">'+cp+' 件</span></div></div>';
     list.forEach(function(r){
       h += '<div class="card"><div class="trow">'+
         '<div class="code">'+esc(r.code)+'</div>'+
-        '<div class="tn">'+esc(r.name)+
-          '<span>'+esc(r.who.join('、'))+
-          (r.cap!==null ? '　·　揪 '+r.cap+'，剩 '+(r.cap-r.qty) : (r.gname?'　·　'+esc(r.gname):''))+
-          '</span></div>'+
-        '<div class="tq">'+r.qty+'<small> 件</small></div></div>'+
-        (r.price ? '<div class="tamt">'+money(r.price)+' × '+r.qty+' ＝ '+money(r.amt)+'</div>' : '')+
-        '</div>';
+        '<div class="tn">'+esc(r.name)+'</div>'+
+        '<div class="tq">'+r.qty+'<small> 件</small></div></div></div>';
     });
-    h += '<div class="tsub"><span>'+esc(cat.name)+'小計</span><span>'+cp+' 件　'+money(ca)+'</span></div>';
+    h += '<div class="tsub"><span>'+esc(cat.name)+'小計</span><span>'+cp+' 件</span></div>';
   });
 
   groups.forEach(function(g){
@@ -850,35 +908,38 @@ function renderTally(){
 }
 function copyTally(){
   var rows = tallyRows().filter(function(r){ return r.qty>0; });
-  var out = ['【訂購總表】'], pcs = 0, amt = 0;
+  var out = ['【訂購總表】'], pcs = 0, amt = 0, oamt = 0;
   CATS.forEach(function(cat){
     var list = rows.filter(function(r){ return r.cat===cat.name; });
     if(!list.length) return;
     var cp = 0;
     out.push(''); out.push('◆ '+cat.name);
     list.forEach(function(r){
-      cp += r.qty; amt += r.amt;
+      cp += r.qty; amt += r.amt; oamt += r.oamt;
       out.push(r.code+' '+r.name+'　×'+r.qty+(r.who.length?'（'+r.who.join('、')+'）':''));
     });
     pcs += cp;
     out.push('— '+cat.name+'小計 '+cp+' 件');
   });
   out.push('');
-  out.push('總計 '+pcs+' 件　'+money(amt));
+  var uq = [];
+  orders.forEach(function(o){ if(uq.indexOf(o.who)<0) uq.push(o.who); });
+  out.push('客人 '+uq.length+' 人　總計 '+pcs+' 件');
+  out.push('原價 '+money(oamt)+'　團購價 '+money(amt)+'　省 '+money(oamt-amt));
   copy(out.join('\n'));
 }
 
 /* ==================== 複製 ==================== */
 function copyCust(name){
   var mine = orders.filter(function(o){ return o.who===name; });
-  var tot = 0, lines = [];
+  var t = totals(mine), lines = [];
   mine.forEach(function(o){
     var it = findItem(o.itemId), v = findVar(it, o.varId); if(!it||!v) return;
-    tot += it.price*o.qty;
     lines.push(it.code+' '+it.name+(v.name?'（'+v.name+'）':'')+' ×'+o.qty+
       (o.memo?'（'+o.memo+'）':'')+'　'+(it.price?money(it.price*o.qty):'贈品'));
   });
-  copy(name+' 訂單\n'+lines.join('\n')+'\n合計 '+money(tot));
+  if(t.save > 0) lines.push('原價 '+money(t.orig)+'，省 '+money(t.save));
+  copy(name+' 訂單\n'+lines.join('\n')+'\n應收 '+money(t.price));
 }
 function copy(text){
   var done = function(){ toast('已複製'); };
@@ -1082,33 +1143,38 @@ function buildXlsx(){
   /* --- 工作表 3：客人結算 --- */
   var names = [];
   orders.forEach(function(o){ if(names.indexOf(o.who)<0) names.push(o.who); });
-  var r3 = [[{t:'客人',s:S.head},{t:'筆數',s:S.head},{t:'件數',s:S.head},{t:'應收金額',s:S.head},{t:'品項摘要',s:S.head}]];
-  var grand = 0;
+  var r3 = [[{t:'客人',s:S.head},{t:'筆數',s:S.head},{t:'件數',s:S.head},{t:'原價金額',s:S.head},
+             {t:'應收金額',s:S.head},{t:'省下',s:S.head},{t:'品項摘要',s:S.head}]];
+  var grand = 0, grandO = 0, grandQ = 0;
   names.forEach(function(n){
-    var mine = orders.filter(function(o){ return o.who===n; }), tot=0, pcs=0, sum=[];
+    var mine = orders.filter(function(o){ return o.who===n; }), t = totals(mine), sum = [];
     mine.forEach(function(o){
       var it = findItem(o.itemId), v = findVar(it, o.varId); if(!it||!v) return;
-      tot += it.price*o.qty; pcs += o.qty;
       sum.push(it.code+(v.name?'('+v.name+')':'')+'×'+o.qty);
     });
-    grand += tot;
-    r3.push([{t:n,s:S.base},{n:mine.length,s:S.mid},{n:pcs,s:S.mid},{n:tot,s:S.num},{t:sum.join('、'),s:S.base}]);
+    grand += t.price; grandO += t.orig; grandQ += t.qty;
+    r3.push([{t:n,s:S.base},{n:mine.length,s:S.mid},{n:t.qty,s:S.mid},{n:t.orig,s:S.num},
+      {n:t.price,s:S.num},{n:t.save,s:S.num},{t:sum.join('、'),s:S.base}]);
   });
-  r3.push([{t:'總計',s:S.head},{s:S.head},{s:S.head},{n:grand,s:S.head},{s:S.head}]);
-  var sheet3 = sheetXML(r3, [], [14,9,9,13,46]);
+  r3.push([{t:'總計',s:S.head},{s:S.head},{n:grandQ,s:S.head},{n:grandO,s:S.head},
+    {n:grand,s:S.head},{n:grandO-grand,s:S.head},{s:S.head}]);
+  var sheet3 = sheetXML(r3, [], [14,9,9,12,12,11,42]);
 
   /* --- 工作表 4：訂購總表 --- */
   var r4 = [[{t:'分類',s:S.head},{t:'編號',s:S.head},{t:'品項',s:S.head},{t:'訂購數量',s:S.head},
-             {t:'單價',s:S.head},{t:'金額',s:S.head},{t:'訂購人',s:S.head}]];
-  var tp = 0, ta = 0;
+             {t:'原價',s:S.head},{t:'團購價',s:S.head},{t:'原價金額',s:S.head},{t:'團購金額',s:S.head},
+             {t:'訂購人',s:S.head}]];
+  var tp = 0, ta = 0, to = 0;
   tallyRows().filter(function(r){ return r.qty>0; }).forEach(function(r){
-    tp += r.qty; ta += r.amt;
+    tp += r.qty; ta += r.amt; to += r.oamt;
     r4.push([{t:r.cat,s:S.mid},{t:r.code,s:S.mid},{t:r.name,s:S.base},{n:r.qty,s:S.bold},
-      (r.price?{n:r.price,s:S.num}:{s:S.num}),(r.amt?{n:r.amt,s:S.num}:{s:S.num}),
+      (r.orig?{n:r.orig,s:S.num}:{s:S.num}),(r.price?{n:r.price,s:S.num}:{s:S.num}),
+      (r.oamt?{n:r.oamt,s:S.num}:{s:S.num}),(r.amt?{n:r.amt,s:S.num}:{s:S.num}),
       {t:r.who.join('、'),s:S.base}]);
   });
-  r4.push([{t:'總計',s:S.head},{s:S.head},{s:S.head},{n:tp,s:S.head},{s:S.head},{n:ta,s:S.head},{s:S.head}]);
-  var sheet4 = sheetXML(r4, [], [9,9,34,11,10,12,40]);
+  r4.push([{t:'總計',s:S.head},{s:S.head},{s:S.head},{n:tp,s:S.head},{s:S.head},{s:S.head},
+    {n:to,s:S.head},{n:ta,s:S.head},{s:S.head}]);
+  var sheet4 = sheetXML(r4, [], [9,9,32,11,10,11,12,12,38]);
 
   var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
   '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
