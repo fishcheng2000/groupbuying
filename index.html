@@ -107,6 +107,19 @@ nav{position:sticky;top:0;z-index:30;background:var(--paper);border-bottom:1px s
 .custfoot{padding:9px 12px;border-top:1px solid var(--line);display:flex;gap:6px}
 .flag{font-size:11px;color:var(--coral);padding:0 12px 9px}
 
+.trow{display:flex;gap:10px;padding:10px 12px;align-items:flex-start}
+.tn{flex:1;font-size:14px;font-weight:600;line-height:1.35}
+.tn span{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:3px;line-height:1.6}
+.tq{font-family:var(--serif);font-size:22px;line-height:1;min-width:40px;text-align:right;padding-top:1px}
+.tq small{font-size:11px;font-family:var(--sans);color:var(--muted)}
+.tamt{font-size:11px;color:var(--muted);padding:0 12px 9px;text-align:right}
+.tsub{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:1px 2px 12px}
+.tsum{background:var(--ink);color:#F6F1F4;border-radius:3px;padding:12px 14px;margin:2px 0 4px}
+.tsum .r{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;padding:4px 0}
+.tsum .r+.r{border-top:1px solid #43303F}
+.tsum .r b{font-family:var(--serif);font-size:16px;font-weight:400}
+.tsum .r span{color:#B39FAE;letter-spacing:.06em}
+
 .ecard{background:var(--card);border:1px solid var(--line);border-radius:3px;margin-bottom:8px;padding:10px 12px}
 .ecard.pool{box-shadow:inset 3px 0 0 var(--ink)}
 .erow{display:flex;gap:6px;align-items:center;margin-bottom:6px}
@@ -190,13 +203,15 @@ textarea{min-height:96px;font-size:12px;font-family:ui-monospace,Menlo,monospace
   <button class="tab on" data-t="stock">庫存</button>
   <button class="tab" data-t="orders">訂單</button>
   <button class="tab" data-t="cust">客人</button>
-  <button class="tab" data-t="edit">編輯品項</button>
+  <button class="tab" data-t="tally">統計</button>
+  <button class="tab" data-t="edit">編輯</button>
 </div></nav>
 
 <main class="wrap">
   <div id="v-stock"><div class="backup" style="margin-top:16px">如果你看到這段文字，而且下面沒有品項清單，代表現在這個視窗擋掉了網頁功能。請用 Safari 直接開啟你的 GitHub Pages 網址。</div></div>
   <div id="v-orders" hidden></div>
   <div id="v-cust" hidden></div>
+  <div id="v-tally" hidden></div>
   <div id="v-edit" hidden></div>
 </main>
 
@@ -331,7 +346,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.tab'), function(b){
   b.onclick = function(){
     tab = b.getAttribute('data-t');
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function(x){ x.classList.toggle('on', x===b); });
-    ['stock','orders','cust','edit'].forEach(function(t){ $('#v-'+t).hidden = (t!==tab); });
+    ['stock','orders','cust','tally','edit'].forEach(function(t){ $('#v-'+t).hidden = (t!==tab); });
     var d = $('#dockbtn');
     d.textContent = (tab==='edit') ? '＋ 新增品項' : '＋ 新增訂單';
     d.className = (tab==='edit') ? 'primary dark' : 'primary';
@@ -360,6 +375,7 @@ function render(){
   if(tab==='stock') renderStock();
   if(tab==='orders') renderOrders();
   if(tab==='cust') renderCust();
+  if(tab==='tally') renderTally();
   if(tab==='edit') renderEdit();
 }
 
@@ -759,6 +775,99 @@ function delOrder(id){
   render(); toast('已刪除，庫存已回補');
 }
 
+/* ==================== 品項統計 ==================== */
+function tallyRows(){
+  var out = [];
+  CATS.forEach(function(cat){
+    items.filter(function(i){ return i.cat===cat.name; }).forEach(function(it){
+      it.vars.forEach(function(v){
+        var who = [];
+        orders.forEach(function(o){
+          if(o.itemId===it.id && o.varId===v.id)
+            who.push(o.who+'×'+o.qty+(o.memo?'（'+o.memo+'）':''));
+        });
+        var n = soldVar(it.id, v.id);
+        out.push({cat:cat.name, code:it.code, name:it.name+(v.name?'（'+v.name+'）':''),
+          note:it.note, qty:n, price:it.price, amt:it.price*n, who:who,
+          cap:(it.gid ? null : v.qty), gname:(it.gid ? (findGroup(it.gid)||{}).name : '')});
+      });
+    });
+  });
+  return out;
+}
+function renderTally(){
+  var all = tallyRows(), rows = all.filter(function(r){ return r.qty>0; });
+  if(!rows.length){
+    $('#v-tally').innerHTML = '<div class="empty"><b>還沒有東西可以統計</b>有訂單之後，這裡會把每個品項<br>被訂走的總數加起來，方便你回報訂貨。</div>';
+    return;
+  }
+  var names = [];
+  orders.forEach(function(o){ if(names.indexOf(o.who)<0) names.push(o.who); });
+  var pcs = orders.reduce(function(s,o){ return s+o.qty; },0);
+  var amt = orders.reduce(function(s,o){ var it=findItem(o.itemId); return s+(it?it.price*o.qty:0); },0);
+
+  var h = '<div class="grouphead"><div class="ghline"><h2>訂購總表</h2><div class="rule"></div>'+
+    '<span class="cnt">'+rows.length+' 個品項</span></div></div>'+
+    '<div class="tsum">'+
+      '<div class="r"><span>訂購件數</span><b>'+pcs+' 件</b></div>'+
+      '<div class="r"><span>客人</span><b>'+names.length+' 人 · '+orders.length+' 筆</b></div>'+
+      '<div class="r"><span>應收總額</span><b>'+money(amt)+'</b></div>'+
+    '</div>';
+
+  CATS.forEach(function(cat){
+    var list = rows.filter(function(r){ return r.cat===cat.name; });
+    if(!list.length) return;
+    var cp = 0, ca = 0;
+    list.forEach(function(r){ cp += r.qty; ca += r.amt; });
+    h += '<div class="grouphead"><div class="ghline"><h2>'+esc(cat.name)+'</h2><div class="rule"></div>'+
+         '<span class="cnt">'+cp+' 件</span></div></div>';
+    list.forEach(function(r){
+      h += '<div class="card"><div class="trow">'+
+        '<div class="code">'+esc(r.code)+'</div>'+
+        '<div class="tn">'+esc(r.name)+
+          '<span>'+esc(r.who.join('、'))+
+          (r.cap!==null ? '　·　揪 '+r.cap+'，剩 '+(r.cap-r.qty) : (r.gname?'　·　'+esc(r.gname):''))+
+          '</span></div>'+
+        '<div class="tq">'+r.qty+'<small> 件</small></div></div>'+
+        (r.price ? '<div class="tamt">'+money(r.price)+' × '+r.qty+' ＝ '+money(r.amt)+'</div>' : '')+
+        '</div>';
+    });
+    h += '<div class="tsub"><span>'+esc(cat.name)+'小計</span><span>'+cp+' 件　'+money(ca)+'</span></div>';
+  });
+
+  groups.forEach(function(g){
+    var used = g.total - groupLeft(g);
+    if(!used) return;
+    h += '<div class="tsub" style="padding-top:6px"><span>'+esc(g.name)+' 共用配額</span>'+
+         '<span>已用 '+used+' / '+g.total+'　剩 '+groupLeft(g)+'</span></div>';
+  });
+
+  var zero = all.length - rows.length;
+  if(zero) h += '<div class="tsub"><span>還沒有人訂的品項</span><span>'+zero+' 項</span></div>';
+  h += '<button class="bigbtn" style="margin-top:6px" onclick="copyTally()">'+
+       '<b>複製訂購總表</b><span>純文字，可以直接貼給廠商或群組</span></button>';
+  $('#v-tally').innerHTML = h;
+}
+function copyTally(){
+  var rows = tallyRows().filter(function(r){ return r.qty>0; });
+  var out = ['【訂購總表】'], pcs = 0, amt = 0;
+  CATS.forEach(function(cat){
+    var list = rows.filter(function(r){ return r.cat===cat.name; });
+    if(!list.length) return;
+    var cp = 0;
+    out.push(''); out.push('◆ '+cat.name);
+    list.forEach(function(r){
+      cp += r.qty; amt += r.amt;
+      out.push(r.code+' '+r.name+'　×'+r.qty+(r.who.length?'（'+r.who.join('、')+'）':''));
+    });
+    pcs += cp;
+    out.push('— '+cat.name+'小計 '+cp+' 件');
+  });
+  out.push('');
+  out.push('總計 '+pcs+' 件　'+money(amt));
+  copy(out.join('\n'));
+}
+
 /* ==================== 複製 ==================== */
 function copyCust(name){
   var mine = orders.filter(function(o){ return o.who===name; });
@@ -793,7 +902,7 @@ function fallbackCopy(text){
 function openBackup(){
   openSheet('<h3>匯出／備份</h3><p class="hint">'+
     (canStore ? '資料已自動儲存在這支手機上。備份碼是換手機或誤刪時的保險。' : '這個瀏覽器不能自動儲存，請務必複製備份碼留存。')+'</p>'+
-    '<button class="bigbtn" onclick="dlExcel()"><b>下載 Excel（.xlsx）</b><span>品項庫存＋訂單明細＋客人結算，三個工作表</span></button>'+
+    '<button class="bigbtn" onclick="dlExcel()"><b>下載 Excel（.xlsx）</b><span>四張工作表：品項庫存、訂單明細、客人結算、訂購總表</span></button>'+
     '<button class="bigbtn" onclick="copyTable()"><b>複製表格</b><span>貼到 Excel／Numbers／Google 試算表會自動分欄</span></button>'+
     '<label class="lbl">備份碼（保留所有品項與訂單）</label>'+
     '<button class="bigbtn" onclick="copyBackup()"><b>複製備份碼</b><span>貼到備忘錄存起來</span></button>'+
@@ -988,6 +1097,19 @@ function buildXlsx(){
   r3.push([{t:'總計',s:S.head},{s:S.head},{s:S.head},{n:grand,s:S.head},{s:S.head}]);
   var sheet3 = sheetXML(r3, [], [14,9,9,13,46]);
 
+  /* --- 工作表 4：訂購總表 --- */
+  var r4 = [[{t:'分類',s:S.head},{t:'編號',s:S.head},{t:'品項',s:S.head},{t:'訂購數量',s:S.head},
+             {t:'單價',s:S.head},{t:'金額',s:S.head},{t:'訂購人',s:S.head}]];
+  var tp = 0, ta = 0;
+  tallyRows().filter(function(r){ return r.qty>0; }).forEach(function(r){
+    tp += r.qty; ta += r.amt;
+    r4.push([{t:r.cat,s:S.mid},{t:r.code,s:S.mid},{t:r.name,s:S.base},{n:r.qty,s:S.bold},
+      (r.price?{n:r.price,s:S.num}:{s:S.num}),(r.amt?{n:r.amt,s:S.num}:{s:S.num}),
+      {t:r.who.join('、'),s:S.base}]);
+  });
+  r4.push([{t:'總計',s:S.head},{s:S.head},{s:S.head},{n:tp,s:S.head},{s:S.head},{n:ta,s:S.head},{s:S.head}]);
+  var sheet4 = sheetXML(r4, [], [9,9,34,11,10,12,40]);
+
   var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
   '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
   '<fonts count="3"><font><sz val="11"/><color rgb="FF241826"/></font>'+
@@ -1013,7 +1135,7 @@ function buildXlsx(){
   '<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'+
   '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 
-  var names3 = ['品項庫存','訂單明細','客人結算'];
+  var names3 = ['品項庫存','訂單明細','客人結算','訂購總表'];
   var wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
     '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '+
     'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+
@@ -1030,7 +1152,7 @@ function buildXlsx(){
     '<Default Extension="xml" ContentType="application/xml"/>'+
     '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
     '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+
-    [1,2,3].map(function(i){ return '<Override PartName="/xl/worksheets/sheet'+i+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join('')+
+    [1,2,3,4].map(function(i){ return '<Override PartName="/xl/worksheets/sheet'+i+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join('')+
     '</Types>';
   var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
@@ -1044,7 +1166,8 @@ function buildXlsx(){
     {name:'xl/styles.xml', data:styles},
     {name:'xl/worksheets/sheet1.xml', data:sheet1},
     {name:'xl/worksheets/sheet2.xml', data:sheet2},
-    {name:'xl/worksheets/sheet3.xml', data:sheet3}
+    {name:'xl/worksheets/sheet3.xml', data:sheet3},
+    {name:'xl/worksheets/sheet4.xml', data:sheet4}
   ]);
 }
 function stamp(){
